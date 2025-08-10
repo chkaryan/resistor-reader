@@ -4,7 +4,7 @@ import os
 import pandas as pd
 
 # Change this to match your path
-base_dir = r"C:\Users\LENOVO\Desktop\resistor-reader\dataset"
+base_dir = r"C:\Users\LENOVO\Desktop\resistor-reader\dataset\training"
 output_csv = os.path.join(base_dir, "resistor_dataset.csv")
 
 data_rows = []
