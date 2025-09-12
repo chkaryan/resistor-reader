@@ -4,9 +4,9 @@ import time
 from datetime import datetime
 
 # ==== SETTINGS ====
-cam_index = 0  # Webcam is usually 0
-burst_count = 75  # Number of images per capture session
-delay_between_shots = 0.1  # Delay between burst shots in seconds
+cam_index = 0  
+burst_count = 75  
+delay_between_shots = 0.1  
 
 # Base path where your dataset will be saved
 base_folder = os.path.join(os.path.expanduser("~"), "Desktop", "resistor-reader", "dataset")

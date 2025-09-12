@@ -5,13 +5,14 @@ from matplotlib.colors import ListedColormap
 from matplotlib.lines import Line2D
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report
 from joblib import dump
 from scipy.stats import chi2_contingency
 import seaborn as sns
 
 # Load dataset
-csv_path = r"C:\Users\LENOVO\Desktop\resistor-reader\dataset\training\resistor_dataset.csv"
+csv_path = r"/home/pi/resistor-reader/dataset/training/resistor_dataset.csv"
 df = pd.read_csv(csv_path)
 
 # Display first few lines
@@ -19,42 +20,58 @@ print("First few lines of dataset:")
 print(df.head())
 
 # Features and label
-X = df[["h_mean", "s_mean", "v_mean"]].values
-y = df["label"].values
+X = df[["h_mean", "s_mean", "v_mean"]]
+y = df["label"]
 
 # Train-test split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Train KNN model
+# ===== ADD FEATURE SCALING =====
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+print("\n=== SCALING INFO ===")
+print("Original X_train range:")
+print(f"H: {X_train.iloc[:, 0].min():.2f} to {X_train.iloc[:, 0].max():.2f}")
+print(f"S: {X_train.iloc[:, 1].min():.2f} to {X_train.iloc[:, 1].max():.2f}")
+print(f"V: {X_train.iloc[:, 2].min():.2f} to {X_train.iloc[:, 2].max():.2f}")
+
+print("\nScaled X_train range:")
+print(f"H: {X_train_scaled[:, 0].min():.2f} to {X_train_scaled[:, 0].max():.2f}")
+print(f"S: {X_train_scaled[:, 1].min():.2f} to {X_train_scaled[:, 1].max():.2f}")
+print(f"V: {X_train_scaled[:, 2].min():.2f} to {X_train_scaled[:, 2].max():.2f}")
+
+# Train KNN model on scaled data
 knn = KNeighborsClassifier(n_neighbors=3)
-knn.fit(X_train, y_train)
+knn.fit(X_train_scaled, y_train)
 
 # Predict and evaluate
-y_pred = knn.predict(X_test)
+y_pred = knn.predict(X_test_scaled)
 accuracy = accuracy_score(y_test, y_pred)
-print(f"Accuracy: {accuracy:.2f}")
+print(f"\nAccuracy: {accuracy:.2f}")
 print("\nClassification Report:\n", classification_report(y_test, y_pred))
 
-# Save model
-model_path = r"C:\Users\LENOVO\Desktop\resistor-reader\knn_model.joblib"
-dump(knn, model_path)
-print("Model saved at:", model_path)
+# ===== SAVE BOTH MODEL AND SCALER =====
+model_path = r"/home/pi/resistor-reader/knn_model.joblib"
+scaler_path = r"/home/pi/resistor-reader/scaler.joblib"
 
-# === 3D Visualization ===
-print("\nGenerating 3D KNN decision boundary plot...")
+dump(knn, model_path)
+dump(scaler, scaler_path)
+
+print(f"\nModel saved at: {model_path}")
+print(f"Scaler saved at: {scaler_path}")
+print("\nIMPORTANT: Both files are needed for inference!")
+
+# === VISUALIZATION SECTION ===
+print("\n" + "="*50)
+print("GENERATING VISUALIZATIONS")
+print("="*50)
 
 # Convert string labels to numeric for plotting
-unique_labels = np.unique(y)
+unique_labels = np.unique(y.values)
 label_to_num = {label: i for i, label in enumerate(unique_labels)}
-y_numeric = np.array([label_to_num[label] for label in y])
-
-# Generate a grid of points for decision boundary
-h_range = np.linspace(df['h_mean'].min(), df['h_mean'].max(), 20)
-s_range = np.linspace(df['s_mean'].min(), df['s_mean'].max(), 20)
-v_range = np.linspace(df['v_mean'].min(), df['v_mean'].max(), 20)
-grid = np.array(np.meshgrid(h_range, s_range, v_range)).T.reshape(-1, 3)
-predictions = knn.predict(grid)
-predictions_numeric = np.array([label_to_num[label] for label in predictions])
+y_numeric = np.array([label_to_num[label] for label in y.values])
 
 # Get number of classes for colormap
 n_classes = len(unique_labels)
@@ -63,15 +80,32 @@ n_classes = len(unique_labels)
 colors = plt.cm.tab10(np.linspace(0, 1, n_classes))
 cmap_discrete = ListedColormap(colors)
 
+# Use original (unscaled) data for visualization
+X_viz = X.values
+
+# === 3D Visualization ===
+print("\nGenerating 3D KNN decision boundary plot...")
+
+# Generate a grid of points for decision boundary (using original scale)
+h_range = np.linspace(X['h_mean'].min(), X['h_mean'].max(), 20)
+s_range = np.linspace(X['s_mean'].min(), X['s_mean'].max(), 20)
+v_range = np.linspace(X['v_mean'].min(), X['v_mean'].max(), 20)
+grid = np.array(np.meshgrid(h_range, s_range, v_range)).T.reshape(-1, 3)
+
+# Scale the grid for prediction (but display original scale)
+grid_scaled = scaler.transform(grid)
+predictions = knn.predict(grid_scaled)
+predictions_numeric = np.array([label_to_num[label] for label in predictions])
+
 # Plot setup (3D scatter)
 fig = plt.figure(figsize=(12, 9))
 ax = fig.add_subplot(111, projection='3d')
 
-# Plot training data points
-scatter_train = ax.scatter(X[:, 0], X[:, 1], X[:, 2], c=y_numeric, cmap=cmap_discrete, 
+# Plot training data points (original scale)
+scatter_train = ax.scatter(X_viz[:, 0], X_viz[:, 1], X_viz[:, 2], c=y_numeric, cmap=cmap_discrete, 
                           s=60, edgecolor='black', linewidth=0.5, alpha=0.8, label='Training Data')
 
-# Plot decision boundary points with transparency
+# Plot decision boundary points with transparency (original scale)
 ax.scatter(grid[:, 0], grid[:, 1], grid[:, 2], c=predictions_numeric, cmap=cmap_discrete, 
           alpha=0.1, s=8, label='Decision Boundary')
 
@@ -79,7 +113,7 @@ ax.scatter(grid[:, 0], grid[:, 1], grid[:, 2], c=predictions_numeric, cmap=cmap_
 ax.set_xlabel('Hue Mean')
 ax.set_ylabel('Saturation Mean')
 ax.set_zlabel('Value Mean')
-ax.set_title(f'KNN Decision Boundary in HSV Color Space\n(k={knn.n_neighbors}, Accuracy: {accuracy:.2f})')
+ax.set_title(f'KNN Decision Boundary in HSV Color Space (Scaled Model)\n(k={knn.n_neighbors}, Accuracy: {accuracy:.2f})')
 
 # Create legend with actual labels
 legend_elements = []
@@ -96,9 +130,78 @@ ax.grid(True, alpha=0.3)
 plt.tight_layout()
 
 # Save the 3D plot
-plot_path_3d = r"C:\Users\LENOVO\Desktop\resistor-reader\knn_decision_boundary_3d.png"
+plot_path_3d = r"/home/pi/resistor-reader/knn_decision_boundary_3d_scaled.png"
 plt.savefig(plot_path_3d, dpi=300, bbox_inches='tight')
 print(f"3D plot saved at: {plot_path_3d}")
+
+plt.show()
+
+# === 2D Visualizations ===
+print("\nGenerating 2D projection plots...")
+
+# Create 2D projections
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+# Define the three 2D projections
+projections = [
+    (0, 1, 'Hue Mean', 'Saturation Mean', 'H-S'),
+    (0, 2, 'Hue Mean', 'Value Mean', 'H-V'),
+    (1, 2, 'Saturation Mean', 'Value Mean', 'S-V')
+]
+
+for i, (x_idx, y_idx, x_label, y_label, title_suffix) in enumerate(projections):
+    ax = axes[i]
+    
+    # Create 2D grid for this projection (original scale)
+    x_range = np.linspace(X_viz[:, x_idx].min(), X_viz[:, x_idx].max(), 100)
+    y_range = np.linspace(X_viz[:, y_idx].min(), X_viz[:, y_idx].max(), 100)
+    xx, yy = np.meshgrid(x_range, y_range)
+    
+    # For predictions, we need to fill in the third dimension with median values
+    grid_2d = np.zeros((xx.ravel().shape[0], 3))
+    grid_2d[:, x_idx] = xx.ravel()
+    grid_2d[:, y_idx] = yy.ravel()
+    
+    # Fill the missing dimension with median value
+    missing_dim = 3 - x_idx - y_idx - 1
+    grid_2d[:, missing_dim] = np.median(X_viz[:, missing_dim])
+    
+    # Scale the 2D grid for prediction
+    grid_2d_scaled = scaler.transform(grid_2d)
+    
+    # Predict on 2D grid
+    predictions_2d = knn.predict(grid_2d_scaled)
+    predictions_2d_numeric = np.array([label_to_num[label] for label in predictions_2d])
+    predictions_2d_numeric = predictions_2d_numeric.reshape(xx.shape)
+    
+    # Plot decision boundary as background (original scale)
+    ax.contourf(xx, yy, predictions_2d_numeric, alpha=0.3, cmap=cmap_discrete, levels=n_classes-1)
+    
+    # Plot training data points (original scale)
+    scatter = ax.scatter(X_viz[:, x_idx], X_viz[:, y_idx], c=y_numeric, cmap=cmap_discrete, 
+                        s=50, edgecolor='black', linewidth=0.5, alpha=0.8)
+    
+    # Labels and title
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title(f'KNN Decision Boundary ({title_suffix} Projection) - Scaled Model\nAccuracy: {accuracy:.2f}')
+    ax.grid(True, alpha=0.3)
+
+# Create a single legend for all subplots
+legend_elements = []
+for i, label in enumerate(unique_labels):
+    legend_elements.append(
+        Line2D([0], [0], marker='o', color='w', label=f'{label}Ω', 
+               markerfacecolor=colors[i], markersize=10)
+    )
+
+fig.legend(handles=legend_elements, loc='center', bbox_to_anchor=(0.5, -0.05), ncol=len(unique_labels))
+plt.tight_layout()
+
+# Save the 2D plots
+plot_path_2d = r"/home/pi/resistor-reader/knn_decision_boundary_2d_scaled.png"
+plt.savefig(plot_path_2d, dpi=300, bbox_inches='tight', pad_inches=0.2)
+print(f"2D plots saved at: {plot_path_2d}")
 
 plt.show()
 
@@ -170,7 +273,7 @@ for bar, p_val in zip(bars, p_values):
 plt.tight_layout()
 
 # Save the chi-square analysis plots
-plot_path_chi2 = r"C:\Users\LENOVO\Desktop\resistor-reader\chi_square_analysis.png"
+plot_path_chi2 = r"/home/pi/resistor-reader/chi_square_analysis_scaled.png"
 plt.savefig(plot_path_chi2, dpi=300, bbox_inches='tight')
 print(f"Chi-square analysis saved at: {plot_path_chi2}")
 
@@ -201,71 +304,15 @@ for feature, feature_name in zip(features, feature_names):
     print(f"  Interpretation: The relationship is {significance}")
 
 print("\n" + "="*60)
+print("TRAINING COMPLETE WITH ALL VISUALIZATIONS!")
+print("="*60)
 
-# === 2D Visualizations ===
-print("\nGenerating 2D projection plots...")
-
-# Create 2D projections
-fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-
-# Define the three 2D projections
-projections = [
-    (0, 1, 'Hue Mean', 'Saturation Mean', 'H-S'),
-    (0, 2, 'Hue Mean', 'Value Mean', 'H-V'),
-    (1, 2, 'Saturation Mean', 'Value Mean', 'S-V')
-]
-
-for i, (x_idx, y_idx, x_label, y_label, title_suffix) in enumerate(projections):
-    ax = axes[i]
-    
-    # Create 2D grid for this projection
-    x_range = np.linspace(X[:, x_idx].min(), X[:, x_idx].max(), 100)
-    y_range = np.linspace(X[:, y_idx].min(), X[:, y_idx].max(), 100)
-    xx, yy = np.meshgrid(x_range, y_range)
-    
-    # For predictions, we need to fill in the third dimension with median values
-    grid_2d = np.zeros((xx.ravel().shape[0], 3))
-    grid_2d[:, x_idx] = xx.ravel()
-    grid_2d[:, y_idx] = yy.ravel()
-    
-    # Fill the missing dimension with median value
-    missing_dim = 3 - x_idx - y_idx - 1
-    grid_2d[:, missing_dim] = np.median(X[:, missing_dim])
-    
-    # Predict on 2D grid
-    predictions_2d = knn.predict(grid_2d)
-    predictions_2d_numeric = np.array([label_to_num[label] for label in predictions_2d])
-    predictions_2d_numeric = predictions_2d_numeric.reshape(xx.shape)
-    
-    # Plot decision boundary as background
-    ax.contourf(xx, yy, predictions_2d_numeric, alpha=0.3, cmap=cmap_discrete, levels=n_classes-1)
-    
-    # Plot training data points
-    scatter = ax.scatter(X[:, x_idx], X[:, y_idx], c=y_numeric, cmap=cmap_discrete, 
-                        s=50, edgecolor='black', linewidth=0.5, alpha=0.8)
-    
-    # Labels and title
-    ax.set_xlabel(x_label)
-    ax.set_ylabel(y_label)
-    ax.set_title(f'KNN Decision Boundary ({title_suffix} Projection)\nAccuracy: {accuracy:.2f}')
-    ax.grid(True, alpha=0.3)
-
-# Create a single legend for all subplots
-legend_elements = []
-for i, label in enumerate(unique_labels):
-    legend_elements.append(
-        Line2D([0], [0], marker='o', color='w', label=f'{label}Ω', 
-               markerfacecolor=colors[i], markersize=10)
-    )
-
-fig.legend(handles=legend_elements, loc='center', bbox_to_anchor=(0.5, -0.05), ncol=len(unique_labels))
-plt.tight_layout()
-
-# Save the 2D plots
-plot_path_2d = r"C:\Users\LENOVO\Desktop\rr-copy\knn_decision_boundary_2d.png"
-plt.savefig(plot_path_2d, dpi=300, bbox_inches='tight', pad_inches=0.2)
-print(f"2D plots saved at: {plot_path_2d}")
-
-plt.show()
-
-print("\nTraining complete with 3D visualization!")
+# Summary of saved files
+print(f"\nSaved Files:")
+print(f"  • Model: {model_path}")
+print(f"  • Scaler: {scaler_path}")
+print(f"  • 3D Plot: {plot_path_3d}")
+print(f"  • 2D Plots: {plot_path_2d}")
+print(f"  • Chi-Square Analysis: {plot_path_chi2}")
+print("\nAll visualizations show original (unscaled) data for interpretability!")
+print("Model uses scaled features for improved performance.")
